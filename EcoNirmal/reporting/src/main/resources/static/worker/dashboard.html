@@ -1,0 +1,15 @@
+<!DOCTYPE html>
+<html>
+<head><title>Worker Dashboard - EcoNirmal</title></head>
+<body>
+    <h1>Worker Dashboard</h1>
+    <p>Welcome, Worker!</p>
+    <button onclick="logout()">Logout</button>
+    <script>
+        function logout() {
+            localStorage.removeItem('user');
+            window.location.href = '/login.html';
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Dashboard - EcoNirmal</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
+    <style>
+        body { background: #f0f7f0; font-family: 'Segoe UI', sans-serif; }
+        .sidebar { background: #2e7d32; min-height: 100vh; color: white; }
+        .sidebar a { color: white; text-decoration: none; display: block; padding: 12px 20px; border-radius: 8px; margin: 5px 0; transition: 0.3s; }
+        .sidebar a:hover, .sidebar a.active { background: #1b5e20; }
+        .main-content { padding: 20px; }
+        .card { border-radius: 15px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); margin-bottom: 20px; }
+        .btn-approve { background: #28a745; color: white; border: none; padding: 5px 15px; border-radius: 20px; }
+        .btn-approve:hover { background: #218838; }
+        .table-responsive { overflow-x: auto; }
+        .status-badge { padding: 3px 8px; border-radius: 20px; font-size: 0.8rem; font-weight: bold; }
+        .status-PENDING { background: #ffc107; color: #000; }
+        .status-VERIFIED { background: #28a745; color: #fff; }
+        .status-REJECTED { background: #dc3545; color: #fff; }
+    </style>
+</head>
+<body>
+    <div class="container-fluid">
+        <div class="row">
+            <!-- Sidebar Menu -->
+            <div class="col-md-3 col-lg-2 sidebar p-3">
+                <h3 class="text-center mb-4"><i class="bi bi-tree-fill"></i> EcoNirmal</h3>
+                <hr class="bg-white">
+                <a href="#" class="active" onclick="showTab('pending'); return false;"><i class="bi bi-person-plus-fill"></i> Pending Workers</a>
+                <a href="#" onclick="showTab('citizens'); return false;"><i class="bi bi-people-fill"></i> All Citizens</a>
+                <a href="#" onclick="showTab('reports'); return false;"><i class="bi bi-file-text-fill"></i> All Reports</a>
+                <hr class="bg-white">
+                <a href="#" onclick="logout(); return false;"><i class="bi bi-box-arrow-right"></i> Logout</a>
+            </div>
+
+            <!-- Main Content Area -->
+            <div class="col-md-9 col-lg-10 main-content">
+                <!-- Pending Workers Tab -->
+                <div id="pendingTab" class="tab-content">
+                    <div class="card p-4">
+                        <h4><i class="bi bi-person-plus-fill"></i> Pending Worker Approvals</h4>
+                        <hr>
+                        <div id="pendingWorkersList" class="table-responsive">
+                            <table class="table table-bordered">
+                                <thead class="table-success">
+                                    <tr><th>ID</th><th>Name</th><th>Email</th><th>Registered On</th><th>Action</th></tr>
+                                </thead>
+                                <tbody id="pendingWorkersTableBody">
+                                    <tr><td colspan="5" class="text-center">Loading...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- All Citizens Tab -->
+                <div id="citizensTab" class="tab-content" style="display:none;">
+                    <div class="card p-4">
+                        <h4><i class="bi bi-people-fill"></i> All Citizens</h4>
+                        <hr>
+                        <div class="table-responsive">
+                            <table class="table table-bordered">
+                                <thead class="table-success">
+                                    <tr><th>ID</th><th>Name</th><th>Email</th><th>Points</th><th>Joined On</th></tr>
+                                </thead>
+                                <tbody id="citizensTableBody">
+                                    <tr><td colspan="5" class="text-center">Loading...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- All Reports Tab -->
+                <div id="reportsTab" class="tab-content" style="display:none;">
+                    <div class="card p-4">
+                        <h4><i class="bi bi-file-text-fill"></i> All Reports</h4>
+                        <hr>
+                        <div class="mb-3">
+                            <label>Filter by status:</label>
+                            <select id="reportStatusFilter" class="form-select w-auto d-inline-block ms-2" onchange="filterAdminReports()">
+                                <option value="all">All</option>
+                                <option value="PENDING">Pending</option>
+                                <option value="VERIFIED">Verified</option>
+                                <option value="REJECTED">Rejected</option>
+                            </select>
+                        </div>
+                        <div class="table-responsive">
+                            <table class="table table-bordered">
+                                <thead class="table-success">
+                                    <tr><th>ID</th><th>Citizen</th><th>Description</th><th>Location</th><th>Status</th><th>Fine</th><th>Reported On</th></tr>
+                                </thead>
+                                <tbody id="reportsTableBody">
+                                    <tr><td colspan="7" class="text-center">Loading...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Get logged-in user from localStorage
+        const user = JSON.parse(localStorage.getItem('user'));
+        if (!user || user.role !== 'ADMIN') window.location.href = '/login.html';
+
+        let allReportsData = []; // store for filtering
+
+        // Helper function for API calls with Basic Auth
+        async function apiCall(url, options = {}) {
+            const headers = {
+                'Authorization': 'Basic ' + btoa(user.email + ':123456'),
+                ...options.headers
+            };
+            const response = await fetch(url, { ...options, headers });
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            return response.json();
+        }
+
+        // Load pending workers
+        async function loadPendingWorkers() {
+            try {
+                const workers = await apiCall('/api/admin/pending-workers');
+                const tbody = document.getElementById('pendingWorkersTableBody');
+                if (workers.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="5" class="text-center">No pending workers.</td></tr>';
+                    return;
+                }
+                let html = '';
+                workers.forEach(w => {
+                    html += `<tr>
+                        <td>${w.id}</td>
+                        <td>${w.name}</td>
+                        <td>${w.email}</td>
+                        <td>${new Date(w.createdAt).toLocaleDateString()}</td>
+                        <td><button class="btn-approve" onclick="approveWorker(${w.id})">Approve</button></td>
+                    </tr>`;
+                });
+                tbody.innerHTML = html;
+            } catch (err) {
+                document.getElementById('pendingWorkersTableBody').innerHTML = `<tr><td colspan="5" class="text-danger">Error loading: ${err.message}</td></tr>`;
+            }
+        }
+
+        // Approve worker
+        async function approveWorker(id) {
+            try {
+                await apiCall(`/api/admin/approve-worker/${id}`, { method: 'PUT' });
+                alert('Worker approved successfully');
+                loadPendingWorkers(); // refresh list
+                // Also refresh citizens list if visible
+                if (document.getElementById('citizensTab').style.display !== 'none') loadCitizens();
+            } catch (err) {
+                alert('Error: ' + err.message);
+            }
+        }
+
+        // Load all citizens
+        async function loadCitizens() {
+            try {
+                const citizens = await apiCall('/api/admin/citizens');
+                const tbody = document.getElementById('citizensTableBody');
+                if (citizens.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="5" class="text-center">No citizens found.</td></tr>';
+                    return;
+                }
+                let html = '';
+                citizens.forEach(c => {
+                    html += `<tr>
+                        <td>${c.id}</td>
+                        <td>${c.name}</td>
+                        <td>${c.email}</td>
+                        <td>${c.contributionPoints}</td>
+                        <td>${new Date(c.createdAt).toLocaleDateString()}</td>
+                    </tr>`;
+                });
+                tbody.innerHTML = html;
+            } catch (err) {
+                document.getElementById('citizensTableBody').innerHTML = `<tr><td colspan="5" class="text-danger">Error loading: ${err.message}</td></tr>`;
+            }
+        }
+
+        // Load all reports
+        async function loadAllReports() {
+            try {
+                const reports = await apiCall('/api/admin/reports');
+                allReportsData = reports;
+                filterAdminReports();
+            } catch (err) {
+                document.getElementById('reportsTableBody').innerHTML = `<tr><td colspan="7" class="text-danger">Error loading: ${err.message}</td></tr>`;
+            }
+        }
+
+        function filterAdminReports() {
+            const filter = document.getElementById('reportStatusFilter').value;
+            let filtered = allReportsData;
+            if (filter !== 'all') {
+                filtered = allReportsData.filter(r => r.status === filter);
+            }
+            const tbody = document.getElementById('reportsTableBody');
+            if (filtered.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="7" class="text-center">No reports found.</td></tr>';
+                return;
+            }
+            let html = '';
+            filtered.forEach(r => {
+                let statusClass = '';
+                if (r.status === 'PENDING') statusClass = 'status-PENDING';
+                else if (r.status === 'VERIFIED') statusClass = 'status-VERIFIED';
+                else if (r.status === 'REJECTED') statusClass = 'status-REJECTED';
+                html += `<tr>
+                    <td>${r.id}</td>
+                    <td>${r.citizenName}<br><small>${r.citizenEmail}</small></td>
+                    <td>${r.description}</td>
+                    <td>${r.latitude}, ${r.longitude}</td>
+                    <td><span class="status-badge ${statusClass}">${r.status}</span></td>
+                    <td>${r.fineAmount ? '₹' + r.fineAmount : '-'}</td>
+                    <td>${new Date(r.reportedAt).toLocaleString()}</td>
+                </tr>`;
+            });
+            tbody.innerHTML = html;
+        }
+
+        // Tab switching
+        function showTab(tab) {
+            document.getElementById('pendingTab').style.display = 'none';
+            document.getElementById('citizensTab').style.display = 'none';
+            document.getElementById('reportsTab').style.display = 'none';
+            if (tab === 'pending') {
+                document.getElementById('pendingTab').style.display = 'block';
+                loadPendingWorkers();
+            } else if (tab === 'citizens') {
+                document.getElementById('citizensTab').style.display = 'block';
+                loadCitizens();
+            } else if (tab === 'reports') {
+                document.getElementById('reportsTab').style.display = 'block';
+                loadAllReports();
+            }
+            // Update active menu style
+            document.querySelectorAll('.sidebar a').forEach(a => a.classList.remove('active'));
+            event.target.classList.add('active');
+        }
+
+        function logout() {
+            localStorage.removeItem('user');
+            window.location.href = '/login.html';
+        }
+
+        // Load default tab
+        showTab('pending');
+    </script>
+</body>
+</html>

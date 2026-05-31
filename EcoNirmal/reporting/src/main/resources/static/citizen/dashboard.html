@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Citizen Dashboard - EcoNirmal</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <style>
+        body { background: #f0f7f0; font-family: 'Segoe UI', sans-serif; }
+        .sidebar { background: #2e7d32; min-height: 100vh; color: white; }
+        .sidebar a { color: white; text-decoration: none; display: block; padding: 12px 20px; border-radius: 8px; margin: 5px 0; transition: 0.3s; }
+        .sidebar a:hover, .sidebar a.active { background: #1b5e20; }
+        .main-content { padding: 20px; }
+        .card { border-radius: 15px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        .points-card { background: #ffc107; color: #333; border-radius: 15px; padding: 15px; text-align: center; }
+        #map { height: 300px; border-radius: 10px; margin-top: 10px; }
+        .status-badge { padding: 3px 8px; border-radius: 20px; font-size: 0.8rem; font-weight: bold; }
+        .status-PENDING { background: #ffc107; color: #000; }
+        .status-VERIFIED { background: #28a745; color: #fff; }
+        .status-REJECTED { background: #dc3545; color: #fff; }
+    </style>
+</head>
+<body>
+    <div class="container-fluid">
+        <div class="row">
+            <!-- Sidebar Menu -->
+            <div class="col-md-3 col-lg-2 sidebar p-3">
+                <h3 class="text-center mb-4"><i class="bi bi-tree-fill"></i> EcoNirmal</h3>
+                <hr class="bg-white">
+                <a href="#" class="active" onclick="showTab('report'); return false;"><i class="bi bi-camera-reels-fill"></i> Report Dumping</a>
+                <a href="#" onclick="showTab('reports'); return false;"><i class="bi bi-list-ul"></i> My Reports</a>
+                <a href="#" onclick="showTab('points'); return false;"><i class="bi bi-star-fill"></i> My Points</a>
+                <hr class="bg-white">
+                <a href="#" onclick="logout(); return false;"><i class="bi bi-box-arrow-right"></i> Logout</a>
+            </div>
+
+            <!-- Main Content Area -->
+            <div class="col-md-9 col-lg-10 main-content">
+                <!-- Report Dumping Tab -->
+                <div id="reportTab" class="tab-content">
+                    <div class="card p-4">
+                        <h4><i class="bi bi-camera-reels-fill"></i> Report Illegal Dumping</h4>
+                        <hr>
+                        <div class="mb-3">
+                            <label class="form-label">Description</label>
+                            <textarea id="description" class="form-control" rows="3" placeholder="What did you see? (e.g., construction waste, household garbage)"></textarea>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Photo (required)</label>
+                            <input type="file" id="imageFile" class="form-control" accept="image/*" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">GPS Location</label>
+                            <button type="button" class="btn btn-secondary btn-sm mb-2" id="getLocationBtn"><i class="bi bi-geo-alt-fill"></i> Use My Current Location</button>
+                            <div id="map"></div>
+                            <div class="row mt-2">
+                                <div class="col">
+                                    <input type="text" id="latitude" class="form-control" placeholder="Latitude" readonly>
+                                </div>
+                                <div class="col">
+                                    <input type="text" id="longitude" class="form-control" placeholder="Longitude" readonly>
+                                </div>
+                            </div>
+                        </div>
+                        <button class="btn btn-success w-100" id="submitReportBtn">Submit Report</button>
+                        <div id="submitMsg" class="mt-3"></div>
+                    </div>
+                </div>
+
+                <!-- My Reports Tab -->
+                <div id="reportsTab" class="tab-content" style="display:none;">
+                    <div class="card p-4">
+                        <h4><i class="bi bi-list-ul"></i> My Reports</h4>
+                        <hr>
+                        <div class="mb-3">
+                            <label>Filter by status:</label>
+                            <select id="statusFilter" class="form-select" onchange="filterReports()">
+                                <option value="all">All</option>
+                                <option value="PENDING">PENDING</option>
+                                <option value="VERIFIED">VERIFIED</option>
+                                <option value="REJECTED">REJECTED</option>
+                            </select>
+                        </div>
+                        <div id="reportsList" class="list-group">
+                            Loading...
+                        </div>
+                    </div>
+                </div>
+
+                <!-- My Points Tab -->
+                <div id="pointsTab" class="tab-content" style="display:none;">
+                    <div class="card p-4 text-center">
+                        <h4><i class="bi bi-star-fill"></i> My Contribution Points</h4>
+                        <hr>
+                        <div class="points-card mt-3">
+                            <h2 id="pointsDisplay">0</h2>
+                            <p>Total Points Earned</p>
+                        </div>
+                        <p class="mt-3">You earn 10 points for each verified report. Keep reporting to keep our city clean!</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Get logged-in user from localStorage
+        let currentUser = null;
+        try {
+            currentUser = JSON.parse(localStorage.getItem('user'));
+            if (!currentUser) window.location.href = '/login.html';
+        } catch(e) { window.location.href = '/login.html'; }
+
+        let allReports = [];  // store all reports for filtering
+
+        // Update points display based on verified reports
+        function updatePointsDisplay() {
+            const verifiedCount = allReports.filter(r => r.status === 'VERIFIED').length;
+            const points = verifiedCount * 10;
+            document.getElementById('pointsDisplay').innerText = points;
+            // Also update stored user object for consistency
+            if (currentUser) {
+                currentUser.contributionPoints = points;
+                localStorage.setItem('user', JSON.stringify(currentUser));
+            }
+        }
+
+        // Load my reports from backend
+        async function loadMyReports() {
+            const user = currentUser;
+            if (!user) {
+                document.getElementById('reportsList').innerHTML = '<div class="list-group-item">Please login again.</div>';
+                return;
+            }
+            const email = user.email;
+            const url = `/api/reports/my?email=${encodeURIComponent(email)}`;
+            try {
+                const res = await fetch(url);
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                const reports = await res.json();
+                allReports = reports;  // store globally
+                console.log("Reports received:", allReports);
+                
+                const container = document.getElementById('reportsList');
+                if (!container) {
+                    console.error("Element 'reportsList' not found!");
+                    return;
+                }
+                
+                if (allReports.length === 0) {
+                    container.innerHTML = '<div class="list-group-item">No reports yet.</div>';
+                } else {
+                    // Display all reports (filter will be applied later)
+                    filterReports();  // apply current filter
+                }
+                // Update points after loading reports
+                updatePointsDisplay();
+            } catch (err) {
+                console.error("Fetch error:", err);
+                document.getElementById('reportsList').innerHTML = '<div class="list-group-item">Error loading reports.</div>';
+            }
+        }
+
+        // Filter reports based on dropdown selection
+        function filterReports() {
+            const filter = document.getElementById('statusFilter').value;
+            let filtered = allReports;
+            if (filter !== 'all') {
+                filtered = allReports.filter(r => r.status.toUpperCase() === filter.toUpperCase());
+            }
+            const container = document.getElementById('reportsList');
+            if (filtered.length === 0) {
+                container.innerHTML = '<div class="list-group-item">No reports found for this status.</div>';
+                return;
+            }
+            let html = '';
+            filtered.forEach(r => {
+                let statusClass = '';
+                if (r.status === 'PENDING') statusClass = 'bg-warning text-dark';
+                else if (r.status === 'VERIFIED') statusClass = 'bg-success text-white';
+                else if (r.status === 'REJECTED') statusClass = 'bg-danger text-white';
+                html += `<div class="list-group-item ${statusClass}">
+                    <strong>${r.status}</strong> - ${r.description}<br>
+                    <small>${new Date(r.reportedAt).toLocaleString()}</small>
+                    ${r.fineAmount ? `<br>Fine: ₹${r.fineAmount}` : ''}
+                </div>`;
+            });
+            container.innerHTML = html;
+        }
+
+        // Map logic
+        let map, marker;
+        function initMap(lat=28.6139, lng=77.2090) {
+            if (map) map.remove();
+            map = L.map('map').setView([lat, lng], 13);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; OpenStreetMap contributors'
+            }).addTo(map);
+            marker = L.marker([lat, lng]).addTo(map);
+            document.getElementById('latitude').value = lat;
+            document.getElementById('longitude').value = lng;
+            map.on('click', function(e) {
+                marker.setLatLng(e.latlng);
+                document.getElementById('latitude').value = e.latlng.lat;
+                document.getElementById('longitude').value = e.latlng.lng;
+            });
+        }
+
+        document.getElementById('getLocationBtn').onclick = () => {
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(pos => {
+                    initMap(pos.coords.latitude, pos.coords.longitude);
+                }, err => alert('GPS error: ' + err.message));
+            } else {
+                alert('Geolocation not supported');
+            }
+        };
+        initMap();
+
+        // Submit report
+        document.getElementById('submitReportBtn').onclick = async () => {
+            const description = document.getElementById('description').value;
+            const imageFile = document.getElementById('imageFile').files[0];
+            const lat = document.getElementById('latitude').value;
+            const lng = document.getElementById('longitude').value;
+            if (!description || !imageFile || !lat || !lng) {
+                document.getElementById('submitMsg').innerHTML = '<div class="alert alert-danger">All fields required (description, photo, GPS).</div>';
+                return;
+            }
+            const formData = new FormData();
+            formData.append('description', description);
+            formData.append('latitude', parseFloat(lat));
+            formData.append('longitude', parseFloat(lng));
+            formData.append('image', imageFile);
+
+            const res = await fetch('/api/reports/submit', {
+                method: 'POST',
+                body: formData
+            });
+            const text = await res.text();
+            if (res.ok) {
+                document.getElementById('submitMsg').innerHTML = '<div class="alert alert-success">' + text + '</div>';
+                document.getElementById('description').value = '';
+                document.getElementById('imageFile').value = '';
+                // Refresh reports list and points
+                await loadMyReports();  // this will update allReports and points
+                // If currently on reports tab, re-apply filter; if on points tab, points already updated
+                if (document.getElementById('reportsTab').style.display !== 'none') {
+                    filterReports();
+                }
+            } else {
+                document.getElementById('submitMsg').innerHTML = '<div class="alert alert-danger">Error: ' + text + '</div>';
+            }
+        };
+
+        // Tab switching
+        function showTab(tab) {
+            document.getElementById('reportTab').style.display = 'none';
+            document.getElementById('reportsTab').style.display = 'none';
+            document.getElementById('pointsTab').style.display = 'none';
+            if (tab === 'report') {
+                document.getElementById('reportTab').style.display = 'block';
+            } else if (tab === 'reports') {
+                document.getElementById('reportsTab').style.display = 'block';
+                loadMyReports();  // load fresh data when switching to reports tab
+            } else if (tab === 'points') {
+                document.getElementById('pointsTab').style.display = 'block';
+                // Ensure points are up-to-date
+                updatePointsDisplay();
+            }
+            // Update active menu style
+            document.querySelectorAll('.sidebar a').forEach(a => a.classList.remove('active'));
+            event.target.classList.add('active');
+        }
+
+        function logout() {
+            localStorage.removeItem('user');
+            window.location.href = '/login.html';
+        }
+
+        // Initial points display (from currentUser, but will be updated when reports load)
+        updatePointsDisplay();
+    </script>
+</body>
+</html>

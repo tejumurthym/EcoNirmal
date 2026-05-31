@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EcoNirmal - Register</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
+    <style>
+        body {
+            background: linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%);
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .register-card {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            padding: 40px;
+            width: 100%;
+            max-width: 450px;
+            transition: transform 0.3s ease;
+        }
+        .register-card:hover {
+            transform: translateY(-5px);
+        }
+        .btn-primary {
+            background-color: #2e7d32;
+            border: none;
+            padding: 12px;
+            font-weight: bold;
+        }
+        .btn-primary:hover {
+            background-color: #1b5e20;
+        }
+        .form-control:focus {
+            border-color: #2e7d32;
+            box-shadow: 0 0 0 0.2rem rgba(46,125,50,0.25);
+        }
+        .logo-icon {
+            font-size: 3rem;
+            color: #2e7d32;
+        }
+    </style>
+</head>
+<body>
+    <div class="register-card">
+        <div class="text-center mb-4">
+            <i class="bi bi-tree-fill logo-icon"></i>
+            <h2 class="mt-2">EcoNirmal</h2>
+            <p class="text-muted">Create a new account</p>
+        </div>
+        <div id="msg" class="alert d-none"></div>
+        <div class="mb-3">
+            <label class="form-label">Full Name</label>
+            <input type="text" id="name" class="form-control" placeholder="Enter your name">
+        </div>
+        <div class="mb-3">
+            <label class="form-label">Email address</label>
+            <input type="email" id="email" class="form-control" placeholder="Enter email">
+        </div>
+        <div class="mb-3">
+            <label class="form-label">Password</label>
+            <input type="password" id="password" class="form-control" placeholder="Password (min 6 characters)">
+        </div>
+        <div class="mb-3">
+            <label class="form-label">Role</label>
+            <select id="role" class="form-select">
+                <option value="CITIZEN">Citizen</option>
+                <option value="WORKER">Worker</option>
+            </select>
+            <small class="text-muted">Note: Workers need admin approval after registration.</small>
+        </div>
+        <button onclick="register()" class="btn btn-primary w-100">Register</button>
+        <p class="text-center mt-3">Already have an account? <a href="login.html">Login here</a></p>
+    </div>
+
+    <script>
+        async function register() {
+            const name = document.getElementById('name').value;
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+            const role = document.getElementById('role').value;
+            const msgDiv = document.getElementById('msg');
+            
+            if (!name || !email || !password) {
+                msgDiv.innerText = 'All fields are required';
+                msgDiv.classList.remove('d-none');
+                msgDiv.classList.add('alert-danger');
+                return;
+            }
+            if (password.length < 6) {
+                msgDiv.innerText = 'Password must be at least 6 characters';
+                msgDiv.classList.remove('d-none');
+                msgDiv.classList.add('alert-danger');
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/auth/register', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name, email, password, role })
+                });
+                const text = await response.text();
+                if (response.ok && text === "User registered successfully!") {
+                    msgDiv.innerText = 'Registration successful! Please login.';
+                    msgDiv.classList.remove('alert-danger');
+                    msgDiv.classList.add('alert-success');
+                    msgDiv.classList.remove('d-none');
+                    setTimeout(() => {
+                        window.location.href = 'login.html';
+                    }, 2000);
+                } else {
+                    msgDiv.innerText = text;
+                    msgDiv.classList.remove('d-none');
+                    msgDiv.classList.add('alert-danger');
+                }
+            } catch (err) {
+                msgDiv.innerText = 'Server error. Is backend running?';
+                msgDiv.classList.remove('d-none');
+                msgDiv.classList.add('alert-danger');
+            }
+        }
+    </script>
+</body>
+</html>
